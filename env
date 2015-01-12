@@ -1,0 +1,3 @@
+export QDF_MDB_HOST=localhost
+export QDF_QUASAR_HOST=localhost
+export QDF_QUASAR_PORT=4410
