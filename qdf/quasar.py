@@ -159,11 +159,12 @@ class Quasar(Protocol):
         iv = msg.init('insertValues')
         iv.uuid = self._normalizeUUID(uid)
         iv.sync = sync
-        recs = iv.init('values', len(times))
+        recs = iv.init('values', total)
         for k in xrange(total):
             recs[k].time = times[k+time_base]
             recs[k].value = values[k+value_base]
         self._txmessage(msg)
+        print "Done inserting"
         return rdef
 
     def flush(self, uid):

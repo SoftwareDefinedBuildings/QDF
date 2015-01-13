@@ -2,6 +2,7 @@ from quasar import *
 import sys
 import array
 from twisted.internet import defer, protocol, reactor
+import isodate
 
 def _fullname(o):
     return o.__module__ + "." + o.__class__.__name__
@@ -12,6 +13,9 @@ def _get_commit():
 def onFail(param):
     reactor.stop()
     raise Exception("Encountered error: ", param)
+
+MIN_TIME    = -(16<<56)
+MAX_TIME    = (48<<56)
 
 class StreamData (object):
     __slots__ = ["times", "values", "uid", "bounds_start", "bounds_end"]
@@ -30,6 +34,15 @@ class StreamData (object):
         self.bounds_start.append(start)
         self.bounds_end.append(end)
 
+    def __repr__(self):
+        rv = "StreamData::"
+        rv += "\n      uuid ="+repr(self.uid)
+        rv += "\n     times ="+repr(self.times)
+        rv += "\n     values="+repr(self.values)
+        rv += "\n    sbounds="+repr(self.bounds_start)
+        rv += "\n    ebounds="+repr(self.bounds_end)+"\n"
+        return rv
+
 class RunReport (object):
     __slots__ = ["streams"]
     def __init__(self):
@@ -43,18 +56,24 @@ class RunReport (object):
     def output(self, name):
         return self.streams[name]
 
+    def __repr__(self):
+        rv = "RunReport"
+        for k in self.streams:
+            rv += "\n> "+ k + "=" + repr(self.streams[k])
+        return rv
+
 class QDF2Distillate (object):
 
     #set by scheduler to {name:uuid}
     deps = []
 
     def __init__(self):
-        self.superinit()
-
-    def superinit(self):
-        self._outputs = []
+        self._outputs = {}
         self.inputs = []
         self._metadata = {}
+
+    def initialize(self):
+        pass
 
     def prereqs(self, changed_ranges):
         """
@@ -63,6 +82,10 @@ class QDF2Distillate (object):
         :return: a list of (name, uuid, [start_time, end_time]) tuples.
         """
         return changed_ranges
+
+    def bind_databases(self, mongo, quasar):
+        self.mdb = mongo
+        self._db = quasar
 
     @staticmethod
     def expand_prereqs_parallel(changed_ranges):
@@ -118,31 +141,27 @@ class QDF2Distillate (object):
                 self.mdb.metadata.remove({"Path":path})
                 doc = None
             if doc is None:
+                print "outputs are: ", self._outputs
                 uid = self._outputs[skey][0]
                 ndoc = {
                     "Path" : path,
                     "Metadata" :
                     {
                         "SourceName" : "Distillates",
-                        "Instrument" :
-                        {
-                            "ModelName" : "Distillate Generator",
-                        },
                         "Algorithm": _fullname(self),
                         "Commit": _get_commit(),
                         "Version": self._version,
                         "Name": self._name,
+                        "ParamVer": self._paramver,
+                        "Parameters" : {},
                     },
-                    "Dependencies" :
-                    {
-
-                    },
+                    "Dependencies" : {},
                     "uuid" : uid,
                     "Properties" :
                     {
                         "UnitofTime" : "ns",
                         "Timezone" : "UTC",
-                        "UnitofMeasure" : self._outputs[skey]["unit"],
+                        "UnitofMeasure" : self._outputs[skey][1],
                         "ReadingType" : "double"
                     }
                 }
@@ -150,6 +169,9 @@ class QDF2Distillate (object):
                     ndoc["Metadata"][k] = self._metadata[k]
                 for k in self.deps:
                     ndoc["Dependencies"][k] = self.deps[k]+"::0"
+                for k in self.params:
+                    ndoc["Metadata"]["Parameters"][k] = self.params[k]
+
                 self.mdb.metadata.save(ndoc)
             else:
                 if int(doc["Metadata"]["Version"]) < self._version:
@@ -157,20 +179,36 @@ class QDF2Distillate (object):
                     self._old_streams.append(skey)
 
                 #self._streams[skey]["uuid"] = doc["uuid"]
-                sdoc = {"Metadata.Version":self._version, "Metadata.Commit": get_commit()}
+                sdoc = {"Metadata.Version":self._version, "Metadata.Commit": _get_commit()}
                 for k in self._metadata:
                     sdoc["Metadata."+k]= self._metadata[k]
                 for k in self._dep_vers:
                     sdoc["Dependencies."+k] = self.deps[k]+"::"+self._dep_vers[k]
+                sdoc["Metadata.Parameters"] = self.params #{k : self.params[k] for k in self.params}
+                sdoc["Metadata.ParamVer"] = self._paramver
                 self.mdb.metadata.update({"Path":path},{"$set":sdoc},upsert=True)
                 print "we inserted new version"
 
-    def get_last_version(self, sname, dep_uid):
+    def get_last_version(self, sname):
         path = "/%s/%s/%s" % (self._section, self._name, sname)
         r = self.mdb.metadata.find_one({"Path":path})
         if r is None:
             return 0
         return int(r["Dependencies"][sname].split("::")[1])
+
+    def get_last_paramversion(self, sname):
+        path = "/%s/%s/%s" % (self._section, self._name, sname)
+        r = self.mdb.metadata.find_one({"Path":path})
+        if r is None:
+            return 0
+        return int(r["Metadata"]["ParamVer"])
+
+    def get_last_algversion(self, sname):
+        path = "/%s/%s/%s" % (self._section, self._name, sname)
+        r = self.mdb.metadata.find_one({"Path":path})
+        if r is None:
+            return 0
+        return int(r["Metadata"]["Version"])
 
     def insertstreamdata(self, s):
         """
@@ -183,6 +221,7 @@ class QDF2Distillate (object):
         dlist = []
         while idx < total:
             chunklen = BATCHSIZE if total - idx > BATCHSIZE else total-idx
+            print ("chunklen is", chunklen)
             d = self._db.insertValuesEx(s.uid, s.times, idx, s.values, idx, chunklen)
             def rv((stat, arg)):
                 print "Insert rv:", stat, arg
@@ -190,7 +229,14 @@ class QDF2Distillate (object):
             d.addErrback(onFail)
             dlist.append(d)
             idx += chunklen
+        print ("returning dlist")
         return defer.DeferredList(dlist)
+
+    @defer.inlineCallbacks
+    def _nuke_stream(self, uid):
+        print "Algorithm or Param ver has changed. Nuking existing data (this can take a while)"
+        rv = yield self._db.deleteRange(uid, MIN_TIME, MAX_TIME)
+        print "rv was: ", rv
 
     def compute(self, changed_ranges, input_streams, params, report):
         """
@@ -211,13 +257,102 @@ class QDF2Distillate (object):
         self._name = name
 
     def register_output(self, name, unit):
-        self._outputs.append([None, name, unit])
+        try:
+            uid = self._conf_outputs[name]
+            self._outputs[name] = (uid, unit)
+        except KeyError:
+            print "MISSING CONFIGURATION OPTION FOR EXPECTED OUTPUT"
+            raise
+
 
     def register_input(self, name):
         self.inputs.append([None, name])
 
     def set_metadata(self, key, value):
         self._metadata[key] = value
+
+    @defer.inlineCallbacks
+    def _process(self):
+        # check for alg or paramver nukages
+        for sname in self._outputs:
+            uid, _ = self._outputs[sname]
+            cur_alg_ver = int(self._version)
+            cur_param_ver = int(self._paramver)
+            if (self.get_last_algversion(sname) != cur_alg_ver or
+               self.get_last_paramversion(sname) != cur_param_ver):
+               self._nuke_stream(uid)
+
+        # get the dependency past versions
+        lver = {}
+        for k, uid in self.deps:
+            lver[uid] = self.get_last_version(k)
+
+        # get the dependency current versions (freeze)
+        cver_keys = [k for k in self.deps]
+        cver_uids = [self.deps[k] for k in self.deps]
+        uid_keymap = {cver_uids[i] : cver_keys[i] for i in xrange(len(cver_keys))}
+        v = yield self._db.queryVersion(cver_uids)
+        cver = {cver_uids[i] : v[i] for i in xrange(len(cver_uids))}
+
+        # get changed ranges
+        chranges = []
+        for k in lver:
+            print "LVER: ",k
+            cr = yield self._db.queryChangedRanges(k, lver[k], cver[k])
+            chranges.append((k, uid_keymap[k], cr))
+
+        # TODO chunk changed ranges
+
+        print("chranges: ",chranges)
+        # get adjusted ranges
+        prereqs = self.prereqs(chranges)
+        print "prereqs are ", repr(prereqs)
+
+        # query data
+        data = {}
+        for istream in self.deps:
+            print "dep was: ", repr(istream)
+
+        # TODO query data
+
+        # prepare output streams
+        runrep = RunReport()
+        for ostream in self._outputs:
+            #                uuid                       name
+            runrep.addstream(self._outputs[ostream][0], ostream)
+
+        # process
+        self.compute(chranges, data, self.params, runrep)
+
+        # delete data in bounds ranges
+        for strm in runrep.streams:
+            for idx in xrange(len(runrep.streams[strm].bounds_start)):
+                sb = runrep.streams[strm].bounds_start[idx]
+                eb = runrep.streams[strm].bounds_end[idx]
+                uid = runrep.streams[strm].uid
+                print "Erasing range %d to %d (%d) in %s" % (sb, eb, eb-sb, uid)
+                yield self._db.deleteRange(uid, sb, eb)
+
+        # insert data into DB
+        insertDeferreds = []
+        for s in runrep.streams:
+            insertDeferreds.append(self.insertstreamdata(runrep.streams[s]))
+
+        # wait for that to finish
+        yield defer.DeferredList(insertDeferreds)
+
+        # here is where you would end the chunking for loop
+
+        # update the dep versions
+        self._dep_vers = []
+        for n in cver_keys:
+            self._dep_vers[n] = cver[cver_uids[n]]
+
+        # sync the metadata
+        self._sync_metadata()
+
+        defer.returnValue(True)
+
 
     @staticmethod
     def date(dst):
