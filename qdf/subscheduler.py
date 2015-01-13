@@ -6,6 +6,7 @@ from pymongo import MongoClient
 import os
 import quasar
 import uuid
+import qdf
 from twisted.internet import defer, protocol, reactor
 
 EXIT_BADCONF = 2
@@ -46,6 +47,8 @@ def load_config(c):
             i = klass(**c[k]["params"])
             i.deps = dict(c[k]["deps"])
             i.uid = c[k]["uuid"]
+            i.params = dict(c[k]["params"])
+            i.outputs = dict(c[k]["outputs"])
             _ = uuid.UUID(i.uid)
             print "deps are: ", repr(i.deps)
             print "uid is: ", repr(i.uid)
@@ -73,8 +76,35 @@ def get_last_version(alg_uid, dep_uid):
         return 0
     return r["dep_ver"]
 
+def set_last_version(alg_uid, dep_uid, version):
+    r = db.dep_versions.find_one({"alg_uuid":alg_uid, "dep_uuid":dep_uid})
+    if r is None:
+        r = {"alg_uuid":alg_uid, "dep_uuid":dep_uid}
+    r["dep_ver"] = version
+    db.dep_version.save(r)
+
 def onFail(param):
     print "Encountered error: ", param
+
+def insertstreamdata(s, qsr):
+    """
+    :param s: a StreamData class
+    :return: a deferred
+    """
+    BATCHSIZE=4000
+    idx = 0
+    total = len(s.times)
+    dlist = []
+    while idx < total:
+        chunklen = BATCHSIZE if total - idx > BATCHSIZE else total-idx
+        d = qsr.insertValuesEx(s.uid, s.times, idx, s.values, idx, chunklen)
+        def rv((stat, arg)):
+            print "Insert rv:", stat, arg
+        d.addCallback(rv)
+        d.addErrback(onFail)
+        dlist.append(d)
+        idx += chunklen
+    return defer.DeferredList(dlist)
 
 @defer.inlineCallbacks
 def process(qsr, algs):
@@ -106,19 +136,44 @@ def process(qsr, algs):
             print "prereqs are ", repr(prereqs)
 
             # query data
-            data = []
+            data = {}
+            for istream in a.deps:
+                print "dep was: ", repr(istream)
 
             # TODO query data
 
+            # prepare output streams
+            runrep = qdf.RunReport()
+            for ostream in a.outputs:
+                runrep.addstream(a.outputs[ostream], ostream)
+
             # process
-            results = {}
-            a.compute(chranges, data, results)
+            a.compute(chranges, data, a.params, runrep)
+
+            print "post compute: ", repr(runrep)
+
+            # insert data into DB
+            insertDeferreds = []
+            for s in runrep.streams:
+                insertDeferreds.append(insertstreamdata(runrep.streams[s], qsr))
+
+            # wait for that to finish
+            yield defer.DeferredList(insertDeferreds)
+
+            # here is where you would end the chunking for loop
+
+            # update the dep versions
+            for u in cver_uids:
+                set_last_version(a.uid, u, cver[u])
+
+            #do next alg
+            continue
 
         setexit(0)
         reactor.stop()
     except Exception as e:
         reactor.stop()
-        raise e
+        raise
 
 def entrypoint():
     print "in entrypoint"
