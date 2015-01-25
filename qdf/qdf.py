@@ -3,6 +3,8 @@ import sys
 import array
 from twisted.internet import defer, protocol, reactor
 import isodate
+import datetime
+import time
 
 def _fullname(o):
     return o.__module__ + "." + o.__class__.__name__
@@ -33,6 +35,9 @@ class StreamData (object):
     def addbounds(self, start, end):
         self.bounds_start.append(start)
         self.bounds_end.append(end)
+
+    def default_bounds(self, changed_ranges):
+        print "chranges: ", changed_ranges
 
     def __repr__(self):
         rv = "StreamData::"
@@ -90,8 +95,9 @@ class QDF2Distillate (object):
     @staticmethod
     def expand_prereqs_parallel(changed_ranges):
         ranges  = []
+        print "erp: ", repr(changed_ranges)
         for s in changed_ranges:
-            ranges += s[2]
+            ranges.append(s[2])
 
         combined_ranges = []
         num_streams = len(ranges)
@@ -125,14 +131,25 @@ class QDF2Distillate (object):
 
         rv = []
         for s in changed_ranges:
-            rv.append(s[0], s[1], combined_ranges[:])
+            rv.append([s[0], s[1], combined_ranges[:]])
         print "Combined ranges input: ", repr(changed_ranges)
         print "Combined ranges output: ", repr(rv)
+        return rv
+
+    def _clamp_range(self, range):
+        rv = [range[0], range[1]]
+        if rv[0] < self._mintime:
+            rv[0] = self._mintime
+        if rv[1] > self._maxtime:
+            rv[1] = self._maxtime
+        if rv[0] >= rv[1]:
+            return None
         return rv
 
     def _sync_metadata(self):
         for skey in self._outputs:
             path = "/%s/%s/%s" % (self._section, self._name, skey)
+            print "SYNC METADATA PATH: ", repr(path)
             print "deps: ", repr(self.deps)
             #deps = ",".join("%s" % self.deps[ky] for ky in self.deps)
             doc = self.mdb.metadata.find_one({"Path":path})
@@ -183,17 +200,23 @@ class QDF2Distillate (object):
                 for k in self._metadata:
                     sdoc["Metadata."+k]= self._metadata[k]
                 for k in self._dep_vers:
-                    sdoc["Dependencies."+k] = self.deps[k]+"::"+self._dep_vers[k]
+                    print "k is", repr(k)
+                    print "a is", repr(self._dep_vers[k])
+                    print "b is", repr(self.deps[k])
+                    sdoc["Dependencies."+k] = self.deps[k]+"::"+str(self._dep_vers[k])
                 sdoc["Metadata.Parameters"] = self.params #{k : self.params[k] for k in self.params}
                 sdoc["Metadata.ParamVer"] = self._paramver
                 self.mdb.metadata.update({"Path":path},{"$set":sdoc},upsert=True)
                 print "we inserted new version"
 
     def get_last_version(self, sname):
-        path = "/%s/%s/%s" % (self._section, self._name, sname)
+        anystream = self._outputs.keys()[0]
+        path = "/%s/%s/%s" % (self._section, self._name, anystream)
+        print "GLV PATH ", repr(path)
         r = self.mdb.metadata.find_one({"Path":path})
         if r is None:
             return 0
+        print "get last version is using: ",r["Dependencies"][sname]
         return int(r["Dependencies"][sname].split("::")[1])
 
     def get_last_paramversion(self, sname):
@@ -241,7 +264,7 @@ class QDF2Distillate (object):
     def compute(self, changed_ranges, input_streams, params, report):
         """
 
-        :param changed_ranges: a list of (name, uuid, [start_time, end_time])
+        :param changed_ranges: a dictionary of {name: [start_time, end_time]}
         :param input_streams: a dictionary of {name: [(time, value)]}
         :return: a RunReport
         """
@@ -264,6 +287,49 @@ class QDF2Distillate (object):
             print "MISSING CONFIGURATION OPTION FOR EXPECTED OUTPUT"
             raise
 
+    def default_chunking_algorithm(self, chranges):
+        ncr = []
+        for cr in chranges:
+            ranges = []
+            for ran in cr[2]:
+                n = self._clamp_range(ran)
+                if n is not None:
+                    ranges.append(n)
+            ncr.append([cr[0],cr[1],ranges])
+
+
+        if len(ncr) == 0:
+            yield None
+            return
+
+        print "DCA input: ", repr(chranges)
+        print "DCA clamp: ", repr(ncr)
+        expanded = QDF2Distillate.expand_prereqs_parallel(ncr)
+        print "Expanded: ", expanded
+        # TODO I am taking the easier route here. Technically we should
+        # not lie about changed ranges, but it does not hurt. I am going to
+        # tell the algs that every stream has changed on the expanded ranges
+        # even if they have not
+
+        def emit(st, et):
+            rv = [[s[0], s[1], [[st,et]] ] for s in ncr]
+            print "emitting: ", repr(rv)
+            return rv
+
+        range_size = 1<<37 #kinda two minutes
+        for cur in expanded[0][2]:
+            #cur is [st, et]
+            ptr = cur[0]
+            while ptr < cur[1]:
+                eslice = (ptr + range_size)
+                print "eslice would be %d from %d" % (eslice, ptr)
+                eslice = eslice & ~(range_size-1)
+                print "it became ",eslice
+                if eslice > cur[1]:
+                    eslice = cur[1]
+                yield emit(ptr, eslice)
+                ptr = eslice
+
 
     def register_input(self, name):
         self.inputs.append([None, name])
@@ -271,82 +337,141 @@ class QDF2Distillate (object):
     def set_metadata(self, key, value):
         self._metadata[key] = value
 
+
     @defer.inlineCallbacks
     def _process(self):
+
         # check for alg or paramver nukages
+        override_runonce = False
         for sname in self._outputs:
             uid, _ = self._outputs[sname]
             cur_alg_ver = int(self._version)
             cur_param_ver = int(self._paramver)
             if (self.get_last_algversion(sname) != cur_alg_ver or
-               self.get_last_paramversion(sname) != cur_param_ver):
-               self._nuke_stream(uid)
+                self.get_last_paramversion(sname) != cur_param_ver):
+                self._nuke_stream(uid)
+                override_runonce = True
+
+        if self._runonce == True and override_runonce == False:
+            print "Not running: this is a runonce algorithm"
+            defer.returnValue(True)
 
         # get the dependency past versions
         lver = {}
-        for k, uid in self.deps:
+        for k in self.deps:
+            uid = self.deps[k]
+            print "grabbing last version"
             lver[uid] = self.get_last_version(k)
+            print "it was:, ", lver[uid]
 
         # get the dependency current versions (freeze)
         cver_keys = [k for k in self.deps]
         cver_uids = [self.deps[k] for k in self.deps]
         uid_keymap = {cver_uids[i] : cver_keys[i] for i in xrange(len(cver_keys))}
-        v = yield self._db.queryVersion(cver_uids)
-        cver = {cver_uids[i] : v[i] for i in xrange(len(cver_uids))}
+        key_uidmap = {cver_keys[i] : cver_uids[i] for i in xrange(len(cver_keys))}
+        status, v = yield self._db.queryVersion(cver_uids)
+        cver = {cver_uids[i] : v[i].values()[0] for i in xrange(len(cver_uids))}
 
         # get changed ranges
         chranges = []
         for k in lver:
-            print "LVER: ",k
-            cr = yield self._db.queryChangedRanges(k, lver[k], cver[k])
+            print "LVER: ",str(k)
+            print "k=",repr(k),type(k)
+            print "lver=",repr(lver[k]),type(lver[k])
+            print "cver=",repr(cver[k]),type(cver[k])
+            print "foo"
+            stat, rv = yield self._db.queryChangedRanges(k, lver[k], cver[k])
+            cr = [[v.startTime, v.endTime] for v in rv[0]]
+            print "cr is: ", repr(cr)
+            cr = [x for x in cr]
+            print "done"
             chranges.append((k, uid_keymap[k], cr))
 
+        print "mintime is ", self._mintime
+        print "maxtime is ", self._maxtime
         # TODO chunk changed ranges
+        # the correct final algorithm would be to take pw=37 slices out of the combined cr
+        # and then feed only the changed ranges that are present in that slice to the
+        # prereqs call.
+        for cr_slice in self.default_chunking_algorithm(chranges):
+            print("chranges: ",cr_slice)
+            # get adjusted ranges
+            prereqs = self.prereqs(cr_slice)
+            print "prereqs are ", repr(cr_slice)
 
-        print("chranges: ",chranges)
-        # get adjusted ranges
-        prereqs = self.prereqs(chranges)
-        print "prereqs are ", repr(prereqs)
+            # query data
+            data = {}
+            data_defs = []
+            for istream in self.deps:
+                #locate the uuid and range in prereqs
+                idx = [i for i in xrange(len(prereqs)) if prereqs[i][1] == istream][0]
+                print "idx was", idx, "prereqs is ", prereqs[idx]
+                st = prereqs[idx][2][0][0]
+                et = prereqs[idx][2][0][1]
+                uid = prereqs[idx][0]
 
-        # query data
-        data = {}
-        for istream in self.deps:
-            print "dep was: ", repr(istream)
+                ver = cver[uid]
+                d = self._db.queryStandardValues(uid, st, et, version=ver)
+                def onret((statcode, (version, values))):
+                    print "[QSR] retcode: ", statcode
+                    data[istream] = [[v.time, v.value] for v in values]
+                d.addCallback(onret)
+                data_defs.append(d)
+                print "dep was: ", repr(istream)
+            print "yielding for data precache"
+            then = time.time()
+            yield defer.DeferredList(data_defs)
+            print "Precache finished in %.2f seconds" % (time.time() - then)
+            print "data:"
+            for k in data:
+                print " > ", k, " ", len(data[k])
 
-        # TODO query data
+            # prepare output streams
+            runrep = RunReport()
+            for ostream in self._outputs:
+                #                uuid                       name
+                runrep.addstream(self._outputs[ostream][0], ostream)
 
-        # prepare output streams
-        runrep = RunReport()
-        for ostream in self._outputs:
-            #                uuid                       name
-            runrep.addstream(self._outputs[ostream][0], ostream)
+            # process
+            if cr_slice is None:
+                altered_changed_ranges = None
+            else:
+                altered_changed_ranges = {}
+                for it in cr_slice:
+                    # we are assuming the chunking algorithm won't give disjoint changed
+                    # ranges to a single invocation
+                    assert len(it[2]) == 1
+                    altered_changed_ranges[it[1]] = it[2][0]
+                print "ACR is: ", altered_changed_ranges
+            self.compute(altered_changed_ranges, data, self.params, runrep)
 
-        # process
-        self.compute(chranges, data, self.params, runrep)
+            print "compute did not error out, erasing and inserting"
+            # delete data in bounds ranges
+            for strm in runrep.streams:
+                for idx in xrange(len(runrep.streams[strm].bounds_start)):
+                    sb = runrep.streams[strm].bounds_start[idx]
+                    eb = runrep.streams[strm].bounds_end[idx]
+                    uid = runrep.streams[strm].uid
+                    print "Erasing range %d to %d (%d) in %s" % (sb, eb, eb-sb, uid)
+                    yield self._db.deleteRange(uid, sb, eb)
 
-        # delete data in bounds ranges
-        for strm in runrep.streams:
-            for idx in xrange(len(runrep.streams[strm].bounds_start)):
-                sb = runrep.streams[strm].bounds_start[idx]
-                eb = runrep.streams[strm].bounds_end[idx]
-                uid = runrep.streams[strm].uid
-                print "Erasing range %d to %d (%d) in %s" % (sb, eb, eb-sb, uid)
-                yield self._db.deleteRange(uid, sb, eb)
+            # insert data into DB
+            insertDeferreds = []
+            for s in runrep.streams:
+                insertDeferreds.append(self.insertstreamdata(runrep.streams[s]))
 
-        # insert data into DB
-        insertDeferreds = []
-        for s in runrep.streams:
-            insertDeferreds.append(self.insertstreamdata(runrep.streams[s]))
+            # wait for that to finish
 
-        # wait for that to finish
-        yield defer.DeferredList(insertDeferreds)
+            yield defer.DeferredList(insertDeferreds)
+            print "ok we have all the database return values"
 
-        # here is where you would end the chunking for loop
+        # end of chunking for loop
 
         # update the dep versions
-        self._dep_vers = []
+        self._dep_vers = {}
         for n in cver_keys:
-            self._dep_vers[n] = cver[cver_uids[n]]
+            print "n is", n
+            self._dep_vers[n] = cver[key_uidmap[n]]
 
         # sync the metadata
         self._sync_metadata()

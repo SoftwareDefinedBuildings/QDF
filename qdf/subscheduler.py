@@ -45,14 +45,18 @@ def load_config(c):
                 continue
             print "Loading instance '%s'" % k
             i = klass()
+
             i.deps = dict(c[k]["deps"])
-            i.uid = c[k]["uuid"]
             i.params = dict(c[k]["params"])
             i._conf_outputs = {ki : c[k]["outputs"][ki] for ki in c[k]["outputs"]}
             i._paramver = int(c[k]["paramver"])
-            _ = uuid.UUID(i.uid)
+            i._mintime = qdf.QDF2Distillate.date(c[k]["mintime"])
+            i._maxtime = qdf.QDF2Distillate.date(c[k]["maxtime"])
+            if "runonce" in c[k]:
+                i._runonce = bool(c[k]["runonce"])
+            else:
+                i._runonce = False
             print "deps are: ", repr(i.deps)
-            print "uid is: ", repr(i.uid)
             rv.append(i)
 
     except KeyError as e:

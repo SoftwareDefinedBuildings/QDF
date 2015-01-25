@@ -87,29 +87,31 @@ class Quasar(Protocol):
 
     def dataReceived(self, data):
         self.have += data
-        if self.expecting == 0:
-            if self.hdrexpecting == 0 and len(self.have) >= 4:
-                #Move to the first stage of decoding: work out header length
-                self.numsegs, = struct.unpack("<I", self.have[:4])
-                self.numsegs += 1
-                self.hdrexpecting = (self.numsegs) * 4
-                if self.hdrexpecting % 8 == 0:
-                    self.hdrexpecting += 4
-                self.hdrptr = 4
-            if self.hdrexpecting != 0 and len(self.have) >= self.hdrexpecting + self.hdrptr:
-                for i in xrange(self.numsegs):
-                    segsize, = struct.unpack("<I", self.have[self.hdrptr:self.hdrptr+4])
-                    self.expecting += segsize*8
-                    self.hdrptr += 4
+        while ((len(self.have) >= self.expecting + self.hdrexpecting + 4) or
+            (len(self.have) > 0 and self.expecting == 0)):
+            if self.expecting == 0:
+                if self.hdrexpecting == 0 and len(self.have) >= 4:
+                    #Move to the first stage of decoding: work out header length
+                    self.numsegs, = struct.unpack("<I", self.have[:4])
+                    self.numsegs += 1
+                    self.hdrexpecting = (self.numsegs) * 4
+                    if self.hdrexpecting % 8 == 0:
+                        self.hdrexpecting += 4
+                    self.hdrptr = 4
+                if self.hdrexpecting != 0 and len(self.have) >= self.hdrexpecting + self.hdrptr:
+                    for i in xrange(self.numsegs):
+                        segsize, = struct.unpack("<I", self.have[self.hdrptr:self.hdrptr+4])
+                        self.expecting += segsize*8
+                        self.hdrptr += 4
 
-        if len(self.have) >= self.expecting + self.hdrexpecting + 4:
-            ptr = self.expecting + self.hdrexpecting + 4
-            self._processSegment(self.have[:ptr])
-            self.have = self.have[ptr:]
-            self.expecting = 0
-            self.numsegs = 0
-            self.hdrexpecting = 0
-        #print "rx: %d bytes have/expecting", len(data), len(self.have), self.expecting
+            if len(self.have) >= self.expecting + self.hdrexpecting + 4:
+                ptr = self.expecting + self.hdrexpecting + 4
+                self._processSegment(self.have[:ptr])
+                self.have = self.have[ptr:]
+                self.expecting = 0
+                self.numsegs = 0
+                self.hdrexpecting = 0
+            #print "rx: %d bytes have/expecting", len(data), len(self.have), self.expecting
 
     def queryStandardValues(self, uid, start, end, version=LATEST):
         msg, rdef = self._newmessage()
