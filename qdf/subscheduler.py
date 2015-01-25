@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 __author__ = 'immesys'
 
 import configobj
@@ -5,15 +6,16 @@ import sys
 from pymongo import MongoClient
 import os
 import quasar
-import uuid
 import qdf
+import resource
 from twisted.internet import defer, protocol, reactor
 
 EXIT_BADCONF = 2
 EXIT_SKIP = 3
 EXIT_UNK  = 4
+EXIT_NOCHANGE = 5
 EXIT_CODE = None
-
+statusmap = {0: "OK: Changes made", 1:"ERR: Internal", 2:"ERR: Bad config file", 3:"OK: Disabled in config", 4:"ERR: Unknown error", 5:"OK: No change in data"}
 def setexit(code):
     global EXIT_CODE
     EXIT_CODE = code
@@ -32,12 +34,15 @@ def load_config(c):
     rv = []
     if "global" not in c:
         print "Missing 'global' section"
-        sys.exit(EXIT_BADCONF)
+        setexit(EXIT_BADCONF)
+        reactor.stop()
     if "enabled" not in c["global"]:
         print "Missing global/enabled"
-        sys.exit(EXIT_BADCONF)
+        setexit(EXIT_BADCONF)
+        reactor.stop()
     if not c["global"]["enabled"]:
-        sys.exit(EXIT_SKIP)
+        setexit(EXIT_SKIP)
+        reactor.stop()
     try:
         klass = dload(c["global"]["algorithm"])
         for k in c:
@@ -82,13 +87,18 @@ def onFail(param):
 def process(qsr, algs):
     print "Entered process:", repr(qsr), repr(algs)
     try:
+        all_sigs = []
         for a in algs:
             a.bind_databases(db, qsr)
             a.initialize(**a.params)
-            yield a._process()
-
-        setexit(0)
-        reactor.stop()
+            significant = yield a._process()
+            all_sigs.append(significant)
+        if any(all_sigs):
+            setexit(0)
+            reactor.stop()
+        else:
+            setexit(EXIT_NOCHANGE)
+            reactor.stop()
     except Exception as e:
         reactor.stop()
         raise
@@ -105,9 +115,15 @@ def entrypoint():
 
 if __name__ == "__main__":
     print "beginning main"
+    resource.setrlimit(resource.RLIMIT_CPU, (60*60, 60*60)) #1 hour of CPU time
+    resource.setrlimit(resource.RLIMIT_DATA, (32*1024*1024*1024, 32*1024*1024*1024)) #32 GB of ram
     reactor.callWhenRunning(entrypoint)
     reactor.run()
-    print "EXIT CODE:", EXIT_CODE
+
+
     if EXIT_CODE is None:
         EXIT_CODE = EXIT_UNK
+    print "EXIT CODE:", EXIT_CODE
+    if EXIT_CODE in statusmap:
+        print "MEANING: ", statusmap[EXIT_CODE]
     sys.exit(EXIT_CODE)

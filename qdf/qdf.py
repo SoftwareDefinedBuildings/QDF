@@ -341,8 +341,10 @@ class QDF2Distillate (object):
     @defer.inlineCallbacks
     def _process(self):
 
+        stuff_happened = False
+
         # check for alg or paramver nukages
-        override_runonce = False
+        override = False
         for sname in self._outputs:
             uid, _ = self._outputs[sname]
             cur_alg_ver = int(self._version)
@@ -350,18 +352,21 @@ class QDF2Distillate (object):
             if (self.get_last_algversion(sname) != cur_alg_ver or
                 self.get_last_paramversion(sname) != cur_param_ver):
                 self._nuke_stream(uid)
-                override_runonce = True
+                override = True
 
-        if self._runonce == True and override_runonce == False:
+        if self._runonce == True and override == False:
             print "Not running: this is a runonce algorithm"
-            defer.returnValue(True)
+            defer.returnValue(False)
 
         # get the dependency past versions
         lver = {}
         for k in self.deps:
             uid = self.deps[k]
             print "grabbing last version"
-            lver[uid] = self.get_last_version(k)
+            if override:
+                lver[uid] = 0
+            else:
+                lver[uid] = self.get_last_version(k)
             print "it was:, ", lver[uid]
 
         # get the dependency current versions (freeze)
@@ -444,7 +449,7 @@ class QDF2Distillate (object):
                     altered_changed_ranges[it[1]] = it[2][0]
                 print "ACR is: ", altered_changed_ranges
             self.compute(altered_changed_ranges, data, self.params, runrep)
-
+            stuff_happened = True
             print "compute did not error out, erasing and inserting"
             # delete data in bounds ranges
             for strm in runrep.streams:
@@ -476,7 +481,7 @@ class QDF2Distillate (object):
         # sync the metadata
         self._sync_metadata()
 
-        defer.returnValue(True)
+        defer.returnValue(stuff_happened)
 
 
     @staticmethod

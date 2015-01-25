@@ -1,3 +1,6 @@
 export QDF_MDB_HOST=localhost
 export QDF_QUASAR_HOST=localhost
 export QDF_QUASAR_PORT=4410
+export QDF_LOGBASE=/srv/qdf/log
+export QDF_INIBASE=/srv/qdf/ini
+export QDF_ALGBASE=/srv/qdf/alg
