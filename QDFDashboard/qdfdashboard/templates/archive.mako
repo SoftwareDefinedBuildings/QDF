@@ -9,11 +9,11 @@
         <link href='http://fonts.googleapis.com/css?family=Dosis|News+Cycle:400,700' rel='stylesheet' type='text/css'>
     </head>
 
-    <body style="background-color:#2B4970">
+    <body style="background-color:#d3f2fc">
         <div style="width:100%">
             <div id="header">
                 <div class="top-panel">
-                    <div style="background-color:#AA9239; text-align:center; padding-top:2rem; padding-bottom:2rem;">
+                    <div style="background-color:#55B7D7; text-align:center; padding-top:2rem; padding-bottom:2rem;">
                         <div class="top-panel-text" align="center">
                             <h1><font color="white">Distillate Processing Dashboard</font></h1>
                         </div>
@@ -23,7 +23,7 @@
         </div>
         <div id="container">
             <!-- Content Part -->
-            <div class="row">
+            <div class="row" style="padding-top:2em">
                 <font face="Dosis">
                     <ul class="accordion" data-accordion>
                         %for instance in instances:
@@ -68,10 +68,10 @@
             <div class="row">
                 <div id="footer">
                     <div class="bott-panel">
-                        <div style="background-color:#2B4970;padding-top:1rem">
+                        <div style="background-color:#D3f2fc; padding-top:1rem">
                             <div class="bott-panel-text">
                                 <div class="large-11 columns">
-                                    <p style="color:#FFFFFF; font-size:13px">This material is based upon work supported by the University of California Berkeley under the Software Defined Buildings project. This site is managed by Michael P Andersen.
+                                    <p style="color:#000000; font-size:13px">This site is managed by Michael P Andersen</p>
                                 </div>
                            </div>
                         </div>

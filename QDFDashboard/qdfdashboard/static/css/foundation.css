@@ -3401,22 +3401,22 @@ ul.pagination {
     display: block;
     margin-bottom: 0 !important; }
     .accordion .accordion-navigation.active > a, .accordion dd.active > a {
-      background: #3086f4; }
+      background: #55B7D7; }
     .accordion .accordion-navigation > a, .accordion dd > a {
-      background: #3086f4;
+      background: #55B7D7;
       color: #222222;
       padding: 1rem;
       display: block;
       font-family: "Dosis", Helvetica, Roboto, Arial, sans-serif;
       font-size: 1rem; }
       .accordion .accordion-navigation > a:hover, .accordion dd > a:hover {
-        background: #3086f4; }
+        background: #55B7D7; }
     .accordion .accordion-navigation > .content, .accordion dd > .content {
       display: none;
       padding: 0.9375rem; }
       .accordion .accordion-navigation > .content.active, .accordion dd > .content.active {
         display: block;
-        background: #3063A4; }
+        background: #0C6D8D; }
 
 .text-left {
   text-align: left !important; }
