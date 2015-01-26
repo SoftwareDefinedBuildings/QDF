@@ -9,6 +9,7 @@ _client = pymongo.MongoClient(os.environ["QDF_MDB_HOST"])
 db = _client.qdf
 
 sys.path.append(os.environ["QDF_ALGBASE"])
+
 statusmap = {0: "OK: Changes made", 1:"ERR: Internal", 2:"ERR: Bad config file", 3:"OK: Disabled in config", 4:"ERR: Unknown error", 5:"OK: No change in data"}
 def align_time():
     """

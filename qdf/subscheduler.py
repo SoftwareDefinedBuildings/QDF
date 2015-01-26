@@ -22,6 +22,8 @@ def setexit(code):
 
 _client = MongoClient(os.environ["QDF_MDB_HOST"])
 db = _client.qdf
+sys.path.append(os.environ["QDF_ALGBASE"])
+sys.path.append(os.environ["QDF_BASE"])
 
 def dload(name):
     mod = __import__(name[:name.rindex(".")])

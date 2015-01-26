@@ -4,3 +4,4 @@ export QDF_QUASAR_PORT=4410
 export QDF_LOGBASE=/srv/qdf/log
 export QDF_INIBASE=/srv/qdf/ini
 export QDF_ALGBASE=/srv/qdf/alg
+export QDF_BASE=/opt/QDF/qdf
