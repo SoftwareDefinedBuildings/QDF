@@ -92,7 +92,6 @@ class QDF2Distillate (object):
     @staticmethod
     def expand_prereqs_parallel(changed_ranges):
         ranges  = []
-        print "erp: ", repr(changed_ranges)
         for s in changed_ranges:
             ranges.append(s[2])
 
