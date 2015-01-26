@@ -36,9 +36,6 @@ class StreamData (object):
         self.bounds_start.append(start)
         self.bounds_end.append(end)
 
-    def default_bounds(self, changed_ranges):
-        print "chranges: ", changed_ranges
-
     def __repr__(self):
         rv = "StreamData::"
         rv += "\n      uuid ="+repr(self.uid)
@@ -132,8 +129,6 @@ class QDF2Distillate (object):
         rv = []
         for s in changed_ranges:
             rv.append([s[0], s[1], combined_ranges[:]])
-        print "Combined ranges input: ", repr(changed_ranges)
-        print "Combined ranges output: ", repr(rv)
         return rv
 
     def _clamp_range(self, range):
@@ -149,16 +144,13 @@ class QDF2Distillate (object):
     def _sync_metadata(self):
         for skey in self._outputs:
             path = "/%s/%s/%s" % (self._section, self._name, skey)
-            print "SYNC METADATA PATH: ", repr(path)
-            print "deps: ", repr(self.deps)
             #deps = ",".join("%s" % self.deps[ky] for ky in self.deps)
             doc = self.mdb.metadata.find_one({"Path":path})
             if doc is not None and doc["Metadata"]["Version"] != self._version:
-                print "Rewriting metadata: version bump"
+                print "[QDF] rewriting metadata: version bump"
                 self.mdb.metadata.remove({"Path":path})
                 doc = None
             if doc is None:
-                print "outputs are: ", self._outputs
                 uid = self._outputs[skey][0]
                 ndoc = {
                     "Path" : path,
@@ -192,7 +184,7 @@ class QDF2Distillate (object):
                 self.mdb.metadata.save(ndoc)
             else:
                 if int(doc["Metadata"]["Version"]) < self._version:
-                    print "stream mismatch: ", int(doc["Metadata"]["Version"]), self._version
+                    print "[QDF] stream mismatch: ", int(doc["Metadata"]["Version"]), self._version
                     self._old_streams.append(skey)
 
                 #self._streams[skey]["uuid"] = doc["uuid"]
@@ -200,23 +192,18 @@ class QDF2Distillate (object):
                 for k in self._metadata:
                     sdoc["Metadata."+k]= self._metadata[k]
                 for k in self._dep_vers:
-                    print "k is", repr(k)
-                    print "a is", repr(self._dep_vers[k])
-                    print "b is", repr(self.deps[k])
                     sdoc["Dependencies."+k] = self.deps[k]+"::"+str(self._dep_vers[k])
                 sdoc["Metadata.Parameters"] = self.params #{k : self.params[k] for k in self.params}
                 sdoc["Metadata.ParamVer"] = self._paramver
                 self.mdb.metadata.update({"Path":path},{"$set":sdoc},upsert=True)
-                print "we inserted new version"
+                print "[QDF] we inserted new metadata version"
 
     def get_last_version(self, sname):
         anystream = self._outputs.keys()[0]
         path = "/%s/%s/%s" % (self._section, self._name, anystream)
-        print "GLV PATH ", repr(path)
         r = self.mdb.metadata.find_one({"Path":path})
         if r is None:
             return 0
-        print "get last version is using: ",r["Dependencies"][sname]
         return int(r["Dependencies"][sname].split("::")[1])
 
     def get_last_paramversion(self, sname):
@@ -244,22 +231,19 @@ class QDF2Distillate (object):
         dlist = []
         while idx < total:
             chunklen = BATCHSIZE if total - idx > BATCHSIZE else total-idx
-            print ("chunklen is", chunklen)
             d = self._db.insertValuesEx(s.uid, s.times, idx, s.values, idx, chunklen)
             def rv((stat, arg)):
-                print "Insert rv:", stat, arg
+                pass
             d.addCallback(rv)
             d.addErrback(onFail)
             dlist.append(d)
             idx += chunklen
-        print ("returning dlist")
         return defer.DeferredList(dlist)
 
     @defer.inlineCallbacks
     def _nuke_stream(self, uid):
-        print "Algorithm or Param ver has changed. Nuking existing data (this can take a while)"
+        print "[QDF] Algorithm or Param ver has changed. Nuking existing data (this can take a while)"
         rv = yield self._db.deleteRange(uid, MIN_TIME, MAX_TIME)
-        print "rv was: ", rv
 
     def compute(self, changed_ranges, input_streams, params, report):
         """
@@ -302,10 +286,10 @@ class QDF2Distillate (object):
             yield None
             return
 
-        print "DCA input: ", repr(chranges)
-        print "DCA clamp: ", repr(ncr)
+        print "[QDF] DCA input: ", repr(chranges)
+        print "[QDF] DCA clamp: ", repr(ncr)
         expanded = QDF2Distillate.expand_prereqs_parallel(ncr)
-        print "Expanded: ", expanded
+        print "[QDF] expanded: ", expanded
         # TODO I am taking the easier route here. Technically we should
         # not lie about changed ranges, but it does not hurt. I am going to
         # tell the algs that every stream has changed on the expanded ranges
@@ -313,7 +297,6 @@ class QDF2Distillate (object):
 
         def emit(st, et):
             rv = [[s[0], s[1], [[st,et]] ] for s in ncr]
-            print "emitting: ", repr(rv)
             return rv
 
         range_size = 1<<37 #kinda two minutes
@@ -322,9 +305,7 @@ class QDF2Distillate (object):
             ptr = cur[0]
             while ptr < cur[1]:
                 eslice = (ptr + range_size)
-                print "eslice would be %d from %d" % (eslice, ptr)
                 eslice = eslice & ~(range_size-1)
-                print "it became ",eslice
                 if eslice > cur[1]:
                     eslice = cur[1]
                 yield emit(ptr, eslice)
@@ -355,19 +336,17 @@ class QDF2Distillate (object):
                 override = True
 
         if self._runonce == True and override == False:
-            print "Not running: this is a runonce algorithm"
+            print "[QDF] Not running: runonce with no override"
             defer.returnValue(False)
 
         # get the dependency past versions
         lver = {}
         for k in self.deps:
             uid = self.deps[k]
-            print "grabbing last version"
             if override:
                 lver[uid] = 0
             else:
                 lver[uid] = self.get_last_version(k)
-            print "it was:, ", lver[uid]
 
         # get the dependency current versions (freeze)
         cver_keys = [k for k in self.deps]
@@ -380,29 +359,19 @@ class QDF2Distillate (object):
         # get changed ranges
         chranges = []
         for k in lver:
-            print "LVER: ",str(k)
-            print "k=",repr(k),type(k)
-            print "lver=",repr(lver[k]),type(lver[k])
-            print "cver=",repr(cver[k]),type(cver[k])
-            print "foo"
             stat, rv = yield self._db.queryChangedRanges(k, lver[k], cver[k])
             cr = [[v.startTime, v.endTime] for v in rv[0]]
-            print "cr is: ", repr(cr)
             cr = [x for x in cr]
-            print "done"
             chranges.append((k, uid_keymap[k], cr))
 
-        print "mintime is ", self._mintime
-        print "maxtime is ", self._maxtime
         # TODO chunk changed ranges
         # the correct final algorithm would be to take pw=37 slices out of the combined cr
         # and then feed only the changed ranges that are present in that slice to the
         # prereqs call.
         for cr_slice in self.default_chunking_algorithm(chranges):
-            print("chranges: ",cr_slice)
             # get adjusted ranges
             prereqs = self.prereqs(cr_slice)
-            print "prereqs are ", repr(cr_slice)
+            print "[QDF] prereqs: ", repr(cr_slice)
 
             # query data
             data = {}
@@ -410,7 +379,6 @@ class QDF2Distillate (object):
             for istream in self.deps:
                 #locate the uuid and range in prereqs
                 idx = [i for i in xrange(len(prereqs)) if prereqs[i][1] == istream][0]
-                print "idx was", idx, "prereqs is ", prereqs[idx]
                 st = prereqs[idx][2][0][0]
                 et = prereqs[idx][2][0][1]
                 uid = prereqs[idx][0]
@@ -418,18 +386,16 @@ class QDF2Distillate (object):
                 ver = cver[uid]
                 d = self._db.queryStandardValues(uid, st, et, version=ver)
                 def onret((statcode, (version, values))):
-                    print "[QSR] retcode: ", statcode
                     data[istream] = [[v.time, v.value] for v in values]
                 d.addCallback(onret)
                 data_defs.append(d)
-                print "dep was: ", repr(istream)
-            print "yielding for data precache"
+            print "[QDF] waiting for data precache"
             then = time.time()
             yield defer.DeferredList(data_defs)
-            print "Precache finished in %.2f seconds" % (time.time() - then)
-            print "data:"
+            print "[QDF] precache finished in %.2f seconds" % (time.time() - then)
+            print "[QDF] data:"
             for k in data:
-                print " > ", k, " ", len(data[k])
+                print "[QDF] > ", k, " : ", len(data[k])
 
             # prepare output streams
             runrep = RunReport()
@@ -447,17 +413,16 @@ class QDF2Distillate (object):
                     # ranges to a single invocation
                     assert len(it[2]) == 1
                     altered_changed_ranges[it[1]] = it[2][0]
-                print "ACR is: ", altered_changed_ranges
             self.compute(altered_changed_ranges, data, self.params, runrep)
             stuff_happened = True
-            print "compute did not error out, erasing and inserting"
+            print "[QDF] compute completed successfully. erasing and inserting"
             # delete data in bounds ranges
             for strm in runrep.streams:
                 for idx in xrange(len(runrep.streams[strm].bounds_start)):
                     sb = runrep.streams[strm].bounds_start[idx]
                     eb = runrep.streams[strm].bounds_end[idx]
                     uid = runrep.streams[strm].uid
-                    print "Erasing range %d to %d (%d) in %s" % (sb, eb, eb-sb, uid)
+                    print "[QDF] erasing range %d to %d (%d) in %s" % (sb, eb, eb-sb, uid)
                     yield self._db.deleteRange(uid, sb, eb)
 
             # insert data into DB
@@ -468,14 +433,13 @@ class QDF2Distillate (object):
             # wait for that to finish
 
             yield defer.DeferredList(insertDeferreds)
-            print "ok we have all the database return values"
+            print "[QDF] database insert complete"
 
         # end of chunking for loop
 
         # update the dep versions
         self._dep_vers = {}
         for n in cver_keys:
-            print "n is", n
             self._dep_vers[n] = cver[key_uidmap[n]]
 
         # sync the metadata
