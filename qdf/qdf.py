@@ -320,6 +320,7 @@ class QDF2Distillate (object):
 
     @defer.inlineCallbacks
     def _process(self):
+        print "process start"
 
         stuff_happened = False
 
@@ -338,6 +339,7 @@ class QDF2Distillate (object):
             print "[QDF] Not running: runonce with no override"
             defer.returnValue(False)
 
+        print "getting prev deps"
         # get the dependency past versions
         lver = {}
         for k in self.deps:
@@ -347,6 +349,7 @@ class QDF2Distillate (object):
             else:
                 lver[uid] = self.get_last_version(k)
 
+        print "getting cur deps"
         # get the dependency current versions (freeze)
         cver_keys = [k for k in self.deps]
         cver_uids = [self.deps[k] for k in self.deps]
@@ -356,7 +359,7 @@ class QDF2Distillate (object):
         cver = {cver_uids[i] : v[i].values()[0] for i in xrange(len(cver_uids))}
 
 
-        print(lver)
+        print('getting changed ranges')
         # get changed ranges
         chranges = []
         for k in lver:
