@@ -362,7 +362,7 @@ class QDF2Distillate (object):
             cr = [[v.startTime, v.endTime] for v in rv[0]]
             cr = [x for x in cr]
             print "qdf line 364"
-            print "k" + k
+            print "k" + str(k)
             chranges.append((k, uid_keymap[k], cr))
 
         # TODO chunk changed ranges
