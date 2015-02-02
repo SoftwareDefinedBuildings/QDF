@@ -80,8 +80,8 @@ class QDF2Distillate (object):
     def prereqs(self, changed_ranges):
         """
 
-        :param changed_ranges: a list of (name, uuid, [start_time, end_time])
-        :return: a list of (name, uuid, [start_time, end_time]) tuples.
+        :param changed_ranges: a list of (name, uuid, [[start_time, end_time], ...])
+        :return: a list of (name, uuid, [[start_time, end_time], ...]) tuples.
         """
         return changed_ranges
 
@@ -361,6 +361,8 @@ class QDF2Distillate (object):
             stat, rv = yield self._db.queryChangedRanges(k, lver[k], cver[k])
             cr = [[v.startTime, v.endTime] for v in rv[0]]
             cr = [x for x in cr]
+            print "qdf line 364"
+            print "k" + k
             chranges.append((k, uid_keymap[k], cr))
 
         # TODO chunk changed ranges
