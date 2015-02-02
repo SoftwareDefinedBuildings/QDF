@@ -361,8 +361,6 @@ class QDF2Distillate (object):
             stat, rv = yield self._db.queryChangedRanges(k, lver[k], cver[k])
             cr = [[v.startTime, v.endTime] for v in rv[0]]
             cr = [x for x in cr]
-            print "qdf line 364"
-            print "k" + str(k)
             chranges.append((k, uid_keymap[k], cr))
 
         # TODO chunk changed ranges
