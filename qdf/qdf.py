@@ -355,6 +355,8 @@ class QDF2Distillate (object):
         status, v = yield self._db.queryVersion(cver_uids)
         cver = {cver_uids[i] : v[i].values()[0] for i in xrange(len(cver_uids))}
 
+
+        print(lver)
         # get changed ranges
         chranges = []
         for k in lver:
