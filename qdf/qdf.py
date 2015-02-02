@@ -241,6 +241,8 @@ class QDF2Distillate (object):
 
     @defer.inlineCallbacks
     def _nuke_stream(self, uid):
+        print "[QDF] this is the correct file"
+        print "this is also the correct file"
         print "[QDF] Algorithm or Param ver has changed. Nuking existing data (this can take a while)"
         rv = yield self._db.deleteRange(uid, MIN_TIME, MAX_TIME)
 
