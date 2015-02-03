@@ -366,12 +366,15 @@ class QDF2Distillate (object):
         # get changed ranges
         chranges = []
         for k in lver:
-            stat, rv = yield self._db.queryChangedRanges(k, lver[k], cver[k], 300000)
-            print "[QDF] CR RV: ", rv
-            if len(rv) > 0:
-                cr = [[v.startTime, v.endTime] for v in rv[0]]
-                cr = [x for x in cr]
-                chranges.append((k, uid_keymap[k], cr))
+            if lver[k] != cver[k]:
+                    stat, rv = yield self._db.queryChangedRanges(k, lver[k], cver[k], 300000)
+                    print "[QDF] CR RV: ", rv
+                    if len(rv) > 0:
+                        cr = [[v.startTime, v.endTime] for v in rv[0]]
+                        cr = [x for x in cr]
+                        chranges.append((k, uid_keymap[k], cr))
+                    else:
+                        chranges.append((k, uid_keymap[k], []))
             else:
                 chranges.append((k, uid_keymap[k], []))
 
