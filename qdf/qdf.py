@@ -88,8 +88,8 @@ class QDF2Distillate (object):
     def prereqs(self, changed_ranges):
         """
 
-        :param changed_ranges: a list of (name, uuid, [start_time, end_time])
-        :return: a list of (name, uuid, [start_time, end_time]) tuples.
+        :param changed_ranges: a list of (name, uuid, [[start_time, end_time], ...])
+        :return: a list of (name, uuid, [[start_time, end_time], ...]) tuples.
         """
         return changed_ranges
 
@@ -100,7 +100,6 @@ class QDF2Distillate (object):
     @staticmethod
     def expand_prereqs_parallel(changed_ranges):
         ranges  = []
-        print "erp: ", repr(changed_ranges)
         for s in changed_ranges:
             ranges.append(s[2])
 

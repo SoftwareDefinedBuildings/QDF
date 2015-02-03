@@ -166,7 +166,6 @@ class Quasar(Protocol):
             recs[k].time = times[k+time_base]
             recs[k].value = values[k+value_base]
         self._txmessage(msg)
-        print "Done inserting"
         return rdef
 
     def flush(self, uid):

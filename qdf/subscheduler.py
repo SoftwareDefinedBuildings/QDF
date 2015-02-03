@@ -87,7 +87,6 @@ def onFail(param):
 
 @defer.inlineCallbacks
 def process(qsr, algs):
-    print "Entered process:", repr(qsr), repr(algs)
     try:
         all_sigs = []
         for a in algs:
@@ -106,7 +105,6 @@ def process(qsr, algs):
         raise
 
 def entrypoint():
-    print "in entrypoint"
     cfg = configobj.ConfigObj(sys.stdin)
     algs = load_config(cfg)
     if algs is None:
@@ -116,7 +114,6 @@ def entrypoint():
     d.addErrback(onFail)
 
 if __name__ == "__main__":
-    print "beginning main"
     resource.setrlimit(resource.RLIMIT_CPU, (60*60, 60*60)) #1 hour of CPU time
     resource.setrlimit(resource.RLIMIT_DATA, (32*1024*1024*1024, 32*1024*1024*1024)) #32 GB of ram
     reactor.callWhenRunning(entrypoint)
