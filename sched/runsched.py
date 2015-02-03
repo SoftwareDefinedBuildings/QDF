@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import pymongo
 import time
 import datetime
@@ -7,7 +8,6 @@ import sys
 
 _client = pymongo.MongoClient(os.environ["QDF_MDB_HOST"])
 db = _client.qdf
-
 sys.path.append(os.environ["QDF_ALGBASE"])
 
 statusmap = {0: "OK: Changes made", 1:"ERR: Internal", 2:"ERR: Bad config file", 3:"OK: Disabled in config", 4:"ERR: Unknown error", 5:"OK: No change in data"}
@@ -17,11 +17,20 @@ def align_time():
     :return:
     """
     n = datetime.datetime.now()
-    dseconds = 5*60 - ((n.minute % 5)*60 + n.second) - 1
-    print "Aligning time, sleeping %d seconds", dseconds
+    dseconds = 5*60 - ((n.minute % 5)*60 + n.second)
+    if dseconds > 3:
+        dseconds = dseconds - 3
+    print "Aligning time, sleeping %d seconds" % dseconds
+    for i in xrange(dseconds):
+        if os.path.isfile("/opt/QDF/ping/runnow"):
+            time.sleep(1)
+            os.remove("/opt/QDF/ping/runnow")
+            return
+        time.sleep(1)
+    dseconds = 5*60 - ((n.minute % 5)*60 + n.second)
+    time.sleep(dseconds)
 
 def do_run():
-    #align_time()
     start_time = time.time()
     run_id = time.strftime("%y.%m.%d.%H.%M")
     print "Beginning run", run_id
@@ -58,6 +67,10 @@ def do_run():
         print "complete - %.2fs, status: %s " % (postrun_record["time"], statusmap[retcode])
 
     print "== RUN COMPLETE == "
+    time.sleep(10)
+    align_time()
 
 if __name__ == "__main__":
-    do_run()
+    print "starting"
+    while True:
+	do_run()

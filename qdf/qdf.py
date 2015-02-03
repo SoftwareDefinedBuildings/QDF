@@ -5,6 +5,7 @@ from twisted.internet import defer, protocol, reactor
 import isodate
 import datetime
 import time
+import uuid
 
 def _fullname(o):
     return o.__module__ + "." + o.__class__.__name__
@@ -18,6 +19,13 @@ def onFail(param):
 
 MIN_TIME    = -(16<<56)
 MAX_TIME    = (48<<56)
+NANOSECOND = 1
+MICROSECOND = 1000*NANOSECOND
+MILLISECOND = 1000*MICROSECOND
+SECOND = 1000*MILLISECOND
+MINUTE = 60*SECOND
+HOUR = 60*MINUTE
+DAY = 24*HOUR
 
 class StreamData (object):
     __slots__ = ["times", "values", "uid", "bounds_start", "bounds_end"]

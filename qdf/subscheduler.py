@@ -42,7 +42,7 @@ def load_config(c):
         print "Missing global/enabled"
         setexit(EXIT_BADCONF)
         reactor.stop()
-    if not c["global"]["enabled"]:
+    if c["global"]["enabled"] not in ["true","True"]:
         setexit(EXIT_SKIP)
         reactor.stop()
     try:
