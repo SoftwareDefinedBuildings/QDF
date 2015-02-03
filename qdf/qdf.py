@@ -362,15 +362,19 @@ class QDF2Distillate (object):
         uid_keymap = {cver_uids[i] : cver_keys[i] for i in xrange(len(cver_keys))}
         key_uidmap = {cver_keys[i] : cver_uids[i] for i in xrange(len(cver_keys))}
         status, v = yield self._db.queryVersion(cver_uids)
-        cver = {cver_uids[i] : v[i].values()[0] for i in xrange(len(cver_uids))}
+        cver = {cver_uids[i] : v[0][uuid.UUID(cver_uids[i]).bytes] for i in xrange(len(cver_uids))}
 
         # get changed ranges
         chranges = []
         for k in lver:
-            stat, rv = yield self._db.queryChangedRanges(k, lver[k], cver[k])
-            cr = [[v.startTime, v.endTime] for v in rv[0]]
-            cr = [x for x in cr]
-            chranges.append((k, uid_keymap[k], cr))
+            stat, rv = yield self._db.queryChangedRanges(k, lver[k], cver[k], 300000)
+            print "[QDF] CR RV: ", rv
+            if len(rv) > 0:
+                cr = [[v.startTime, v.endTime] for v in rv[0]]
+                cr = [x for x in cr]
+                chranges.append((k, uid_keymap[k], cr))
+            else:
+                chranges.append((k, uid_keymap[k], []))
 
         # TODO chunk changed ranges
         # the correct final algorithm would be to take pw=37 slices out of the combined cr
@@ -386,16 +390,21 @@ class QDF2Distillate (object):
             data_defs = []
             for istream in self.deps:
                 #locate the uuid and range in prereqs
+                print "[QDF] istream: " + str(istream)
                 idx = [i for i in xrange(len(prereqs)) if prereqs[i][1] == istream][0]
                 st = prereqs[idx][2][0][0]
                 et = prereqs[idx][2][0][1]
                 uid = prereqs[idx][0]
-
+                print "[QDF] uuid=",uid
                 ver = cver[uid]
                 d = self._db.queryStandardValues(uid, st, et, version=ver)
-                def onret((statcode, (version, values))):
-                    data[istream] = [[v.time, v.value] for v in values]
-                d.addCallback(onret)
+
+                def make_onret(a_uid):
+                        def onret((statcode, (version, values))):
+                            key = uid_keymap[a_uid]
+                            data[key] = [[v.time, v.value] for v in values]
+                        return onret
+                d.addCallback(make_onret(uid))
                 data_defs.append(d)
             print "[QDF] waiting for data precache"
             then = time.time()
