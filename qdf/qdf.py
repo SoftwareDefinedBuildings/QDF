@@ -361,8 +361,13 @@ class QDF2Distillate (object):
         uid_keymap = {cver_uids[i] : cver_keys[i] for i in xrange(len(cver_keys))}
         key_uidmap = {cver_keys[i] : cver_uids[i] for i in xrange(len(cver_keys))}
         status, v = yield self._db.queryVersion(cver_uids)
-        cver = {cver_uids[i] : v[0][uuid.UUID(cver_uids[i]).bytes] for i in xrange(len(cver_uids))}
-
+        try: #cab: added to give informative error on bad uuid inputs
+          cver = {cver_uids[i] : v[0][uuid.UUID(cver_uids[i]).bytes] for i in xrange(len(cver_uids))}
+        except KeyError:
+          print "[QDF] key error on current version uids. Check input uids in config for errors"
+          raise KeyError
+        print "stream cver", cver
+        print "meta lver", lver
         # get changed ranges
         chranges = []
         for k in lver:
@@ -443,6 +448,7 @@ class QDF2Distillate (object):
                     uid = runrep.streams[strm].uid
                     print "[QDF] erasing range %d to %d (%d) in %s" % (sb, eb, eb-sb, uid)
                     yield self._db.deleteRange(uid, sb, eb)
+                    print "[QDF] erase range complete"
 
             # insert data into DB
             insertDeferreds = []

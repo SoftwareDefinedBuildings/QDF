@@ -77,6 +77,7 @@ def load_config(c):
         reactor.stop()
         return None
     except Exception as e:
+        setexit(EXIT_BADCONF)
         reactor.stop()
         raise
 
@@ -90,8 +91,10 @@ def process(qsr, algs):
     try:
         all_sigs = []
         for a in algs:
+            print ("[QDF] initialising algorithm:",repr(a))
             a.bind_databases(db, qsr)
             a.initialize(**a.params)
+            print ("[QDF] doing process")
             significant = yield a._process()
             all_sigs.append(significant)
         if any(all_sigs):
@@ -101,8 +104,9 @@ def process(qsr, algs):
             setexit(EXIT_NOCHANGE)
             reactor.stop()
     except Exception as e:
+        setexit(EXIT_UNK)
         reactor.stop()
-        raise
+        return
 
 def entrypoint():
     cfg = configobj.ConfigObj(sys.stdin)
@@ -114,8 +118,9 @@ def entrypoint():
     d.addErrback(onFail)
 
 if __name__ == "__main__":
-    resource.setrlimit(resource.RLIMIT_CPU, (60*60, 60*60)) #1 hour of CPU time
-    resource.setrlimit(resource.RLIMIT_DATA, (32*1024*1024*1024, 32*1024*1024*1024)) #32 GB of ram
+    # Connor wants more cpu time
+    #resource.setrlimit(resource.RLIMIT_CPU, (60*60, 60*60)) #1 hour of CPU time
+    #resource.setrlimit(resource.RLIMIT_DATA, (32*1024*1024*1024, 32*1024*1024*1024)) #32 GB of ram
     reactor.callWhenRunning(entrypoint)
     reactor.run()
 
