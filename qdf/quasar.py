@@ -182,14 +182,14 @@ class Quasar(Protocol):
         self._txmessage(msg)
         return rdef
 
-    def queryChangedRanges(self, uid, fromgen, togen=LATEST, threshold=0):
+    def queryChangedRanges(self, uid, fromgen, togen=LATEST, resolution=38): #default around 5 minutes
         msg, rdef = self._newmessage()
 
         qcr = msg.init('queryChangedRanges')
         qcr.uuid = self._normalizeUUID(uid)
         qcr.fromGeneration = fromgen
         qcr.toGeneration = togen
-        qcr.threshold = threshold
+        qcr.resolution = resolution
 
         self._txmessage(msg)
         return rdef
