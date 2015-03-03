@@ -368,6 +368,19 @@ class QDF2Distillate (object):
           raise KeyError
         print "stream cver", cver
         print "meta lver", lver
+        # if the difference is more than 17280 generations (roughly a day or so) then
+        # only process 17280 generations in this run. This makes individual runs shorter
+        # which is good
+        try:
+            for k in cver:
+                if cver[k] - lver[k] > 17280:
+                    cver[k] = lver[k] + 17280
+        except KeyError:
+            print "[QDF] keys are inconsistent. Check input uuids"
+            raise KeyError
+
+        print "adjusted stream cver", cver
+
         # get changed ranges
         chranges = []
         for k in lver:
