@@ -36,6 +36,26 @@ class StreamData (object):
         self.bounds_start = array.array("L")
         self.bounds_end = array.array("L")
 
+    def compress_erases(self):
+        print "Before compress: ",zip(self.bounds_start, self.bounds_end)
+        go = True
+        while go:
+            go = False
+            for idx in xrange(len(self.bounds_start)-1):
+                for idx2 in xrange(idx+1, len(self.bounds_start)):
+                    s1 = self.bounds_start[idx]
+                    e1 = self.bounds_end[idx]
+                    s2 = self.bounds_start[idx2]
+                    e2 = self.bounds_end[idx2]
+                    if (s1 <= s2) and (e1 >= s2):
+                        self.bounds_start[idx] = min(s1,s2)
+                        self.bounds_end[idx] = max(e1, e2)
+                        del self.bounds_start[idx2]
+                        del self.bounds_end[idx2]
+                        go = True
+                        continue
+        print "After compress: ", zip(self.bounds_start, self.bounds_end)
+
     def addreading(self, time, value):
         self.values.append(value)
         self.times.append(time)
@@ -453,8 +473,10 @@ class QDF2Distillate (object):
             self.compute(altered_changed_ranges, data, self.params, runrep)
             stuff_happened = True
             print "[QDF] compute completed successfully. erasing and inserting"
+
             # delete data in bounds ranges
             for strm in runrep.streams:
+                runrep.streams[strm].compress_erases()
                 for idx in xrange(len(runrep.streams[strm].bounds_start)):
                     sb = runrep.streams[strm].bounds_start[idx]
                     eb = runrep.streams[strm].bounds_end[idx]
