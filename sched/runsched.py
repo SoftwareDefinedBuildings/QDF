@@ -25,12 +25,12 @@ def do_run():
     for root, dirs, ff in os.walk(os.environ["QDF_INIBASE"]):
         for f in ff:
             if f.endswith(".ini"):
-                files.append(f)
+		full = os.path.join(root,f)
+                files.append((full, f))
 
     print "TOTAL OF %d INI FILES" % len(files)
-    print "files:", files
     all_instances = []
-    for instance in files:
+    for full, instance in files:
         then = time.time()
         instance_name = instance[:-4] #strip .ini
         print "Processing instance: ", instance_name
@@ -45,7 +45,7 @@ def do_run():
         rec["shour"] = n.hour
         rec["sminute"] = n.minute
         db.runs.save(rec)
-        instancefile = open(os.path.join(os.environ["QDF_INIBASE"], instance),"r")
+        instancefile = open(os.path.join(os.environ["QDF_INIBASE"], full),"r")
         proc = subprocess.Popen(["../qdf/subscheduler.py"], stdin=instancefile, stdout=logfile, stderr=subprocess.STDOUT)
         all_instances.append((proc, run_id, instance_name, then, logfile, instancefile))
     for tpl in all_instances:
