@@ -8,6 +8,7 @@ import os
 import quasar
 import qdf
 import resource
+import traceback
 from twisted.internet import defer, protocol, reactor
 
 EXIT_BADCONF = 2
@@ -104,6 +105,7 @@ def process(qsr, algs):
             setexit(EXIT_NOCHANGE)
             reactor.stop()
     except Exception as e:
+        print traceback.format_exc()
         setexit(EXIT_UNK)
         reactor.stop()
         return

@@ -137,7 +137,7 @@ class QDF2Distillate (object):
                 if len(ranges[idx]) == 0:
                     continue
                 progress = True
-                if ranges[idx][0][0] < ranges[minidx][0][0]:
+                if len(ranges[minidx]) == 0 or (ranges[idx][0][0] < ranges[minidx][0][0]):
                     minidx = idx
             #Now see if any of the other ranges starts lie before it's end
             for idx in xrange(num_streams):

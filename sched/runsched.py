@@ -64,7 +64,7 @@ def do_run():
         print "complete - %.2fs, status: %s " % (postrun_record["time"], statusmap[retcode])
 
     print "== RUN COMPLETE == "
-    time.sleep(10)
+    time.sleep(60)
 
 if __name__ == "__main__":
     print "starting"
