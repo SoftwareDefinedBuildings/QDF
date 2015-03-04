@@ -28,7 +28,7 @@ def do_run():
                 files.append(f)
 
     print "TOTAL OF %d INI FILES" % len(files)
-
+    print "files:", files
     all_instances = []
     for instance in files:
         then = time.time()
@@ -37,7 +37,8 @@ def do_run():
         logname = "%s_%s.txt" % (run_id, instance_name)
         logfile = open(os.path.join(os.environ["QDF_LOGBASE"], logname), "w")
         n = datetime.datetime.now()
-        rec = {"logname":logname, "run_id":run_id, "instance":instance_name, "started":n, "retcode":-1, "retcode_human":"incomplete", "time":-1, "status":"incomplete"}
+        rec = {"logname":logname, "run_id":run_id, "instance":instance_name, "started":n,
+               "retcode":-1, "retcode_human":"incomplete", "time":-1, "status":"incomplete"}
         rec["syear"] = n.year
         rec["smonth"] = n.month
         rec["sday"] = n.day
