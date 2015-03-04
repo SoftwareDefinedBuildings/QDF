@@ -329,7 +329,7 @@ class QDF2Distillate (object):
             rv = [[s[0], s[1], [[st,et]] ] for s in ncr]
             return rv
 
-        range_size = 1<<37 #kinda two minutes
+        range_size = 1<<39 #kinda eight minutes
         for cur in expanded[0][2]:
             #cur is [st, et]
             ptr = cur[0]
@@ -391,13 +391,17 @@ class QDF2Distillate (object):
           raise KeyError
         print "stream cver", cver
         print "meta lver", lver
-        try:        
+        # if the difference is more than 17280 generations (roughly a day or so) then
+        # only process 17280 generations in this run. This makes individual runs shorter
+        # which is good
+        try:
             for k in cver:
                 if lver[k] == 0:
                     lver[k] = 1 #0 is not a valid gen to query from                 
                 if cver[k] - lver[k] > 17280:
                     cver[k] = lver[k] + 17280 
         except KeyError:
+            print "[QDF] keys are inconsistent. Check input uuids"
             raise KeyError
         print "adjusted stream cver", cver
 
@@ -405,7 +409,7 @@ class QDF2Distillate (object):
         chranges = []
         for k in lver:
             if lver[k] != cver[k]:
-                    stat, rv = yield self._db.queryChangedRanges(k, lver[k], cver[k], 300000)
+                    stat, rv = yield self._db.queryChangedRanges(k, lver[k], cver[k], 38)
                     print "[QDF] CR RV: ", rv
                     if len(rv) > 0:
                         cr = [[v.startTime, v.endTime] for v in rv[0]]
@@ -416,8 +420,7 @@ class QDF2Distillate (object):
             else:
                 chranges.append((k, uid_keymap[k], []))
 
-        # TODO chunk changed ranges
-        # the correct final algorithm would be to take pw=37 slices out of the combined cr
+        # take pw=38 slices out of the combined cr
         # and then feed only the changed ranges that are present in that slice to the
         # prereqs call.
         for cr_slice in self.default_chunking_algorithm(chranges):
