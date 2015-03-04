@@ -207,10 +207,9 @@ class QDF2Distillate (object):
                 for k in self._metadata:
                     ndoc["Metadata"][k] = self._metadata[k]
                 for k in self.deps:
-                    ndoc["Dependencies"][k] = self.deps[k]+"::0"
+                    ndoc["Dependencies"][k] = self.deps[k]+"::"+str(self._dep_vers[k])
                 for k in self.params:
                     ndoc["Metadata"]["Parameters"][k] = self.params[k]
-
                 self.mdb.metadata.save(ndoc)
             else:
                 if int(doc["Metadata"]["Version"]) < self._version:
