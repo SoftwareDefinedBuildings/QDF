@@ -391,7 +391,15 @@ class QDF2Distillate (object):
           raise KeyError
         print "stream cver", cver
         print "meta lver", lver
-
+        try:        
+            for k in cver:
+                if lver[k] == 0:
+                    lver[k] = 1 #0 is not a valid gen to query from                 
+                if cver[k] - lver[k] > 17280:
+                    cver[k] = lver[k] + 17280 
+        except KeyError:
+            raise KeyError
+        print "adjusted stream cver", cver
 
         # get changed ranges
         chranges = []
