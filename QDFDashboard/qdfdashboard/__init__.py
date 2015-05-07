@@ -8,7 +8,7 @@ def main(global_config, **settings):
     config.include('pyramid_mako')
     config.add_static_view('static', 'static', cache_max_age=3600)
     config.add_route('latest', '/latest')
-    config.add_route('logfile', '/log/{id:[0-9A-Za-z\._]+}')
+    config.add_route('logfile', '/log/{id:[0-9A-Za-z\-\._]+}')
     config.add_route('archive', '/')
     config.add_route('daylist', '/list/{inst}/{year}/{month}/{day}')
     config.scan()
